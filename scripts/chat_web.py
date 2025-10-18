@@ -31,22 +31,23 @@ Abuse Prevention:
 """
 
 import argparse
-import json
-import os
-import torch
 import asyncio
+import json
 import logging
+import os
 import random
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
+from dataclasses import dataclass
+from typing import AsyncGenerator, List, Optional
+
+import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, AsyncGenerator
-from dataclasses import dataclass
 
-from nanochat.common import compute_init
 from nanochat.checkpoint_manager import load_model
+from nanochat.common import autodetect_device_type, compute_init
 from nanochat.engine import Engine
 
 # Abuse prevention limits
@@ -80,7 +81,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ddp, ddp_rank, ddp_local_rank, ddp_world_size, device = compute_init()
+device_type = autodetect_device_type()
+ddp, ddp_rank, ddp_local_rank, ddp_world_size, device = compute_init(device_type)
 
 @dataclass
 class Worker:
@@ -94,7 +96,8 @@ class Worker:
 class WorkerPool:
     """Pool of workers, each with a model replica on a different GPU."""
 
-    def __init__(self, num_gpus: Optional[int] = None):
+    def __init__(self, num_gpus: Optional[int] = None, device_type: str = "cuda"):
+        self.device_type = device_type
         self.num_gpus = num_gpus if num_gpus is not None else torch.cuda.device_count()
         self.workers: List[Worker] = []
         self.available_workers: asyncio.Queue = asyncio.Queue()
@@ -104,12 +107,18 @@ class WorkerPool:
         print(f"Initializing worker pool with {self.num_gpus} GPUs...")
 
         for gpu_id in range(self.num_gpus):
-            device = torch.device(f"cuda:{gpu_id}")
+            if self.device_type == "cuda":
+                device = torch.device(f"cuda:{gpu_id}")
+            else:
+                device = torch.device(self.device_type)  # mps or cpu
             print(f"Loading model on GPU {gpu_id}...")
 
             model, tokenizer, _ = load_model(source, device, phase="eval", model_tag=model_tag, step=step)
             engine = Engine(model, tokenizer)
-            autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+            if self.device_type == "cuda":
+                autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+            else:
+                autocast_ctx = nullcontext() # default precision for MPS/CPU
 
             worker = Worker(
                 gpu_id=gpu_id,
@@ -208,7 +217,7 @@ def validate_chat_request(request: ChatRequest):
 async def lifespan(app: FastAPI):
     """Load models on all GPUs on startup."""
     print("Loading nanochat models across GPUs...")
-    app.state.worker_pool = WorkerPool(num_gpus=args.num_gpus)
+    app.state.worker_pool = WorkerPool(num_gpus=args.num_gpus, device_type=device_type)
     await app.state.worker_pool.initialize(args.source, model_tag=args.model_tag, step=args.step)
     print(f"Server ready at http://localhost:{args.port}")
     yield
