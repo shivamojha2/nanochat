@@ -12,8 +12,10 @@
 
 # Default intermediate artifacts directory is in ~/.cache/nanochat
 export OMP_NUM_THREADS=1
-export NANOCHAT_BASE_DIR="$HOME/.cache/nanochat"
+# export NANOCHAT_BASE_DIR="$HOME/.cache/nanochat"
+export NANOCHAT_BASE_DIR="/Users/sojha1/Others/nanochat/artifacts"
 mkdir -p $NANOCHAT_BASE_DIR
+# export CUDA_VISIBLE_DEVICES=1,2,3,4
 
 # -----------------------------------------------------------------------------
 # Python venv setup with uv

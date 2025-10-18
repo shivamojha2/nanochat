@@ -4,19 +4,28 @@
 
 # all the setup stuff
 export OMP_NUM_THREADS=1
-NANOCHAT_BASE_DIR="$HOME/.cache/nanochat"
+# export NANOCHAT_BASE_DIR="$HOME/.cache/nanochat"
+export NANOCHAT_BASE_DIR="/Users/sojha1/Others/nanochat/artifacts"
 mkdir -p $NANOCHAT_BASE_DIR
+
+# Setup uv
 command -v uv &> /dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
 [ -d ".venv" ] || uv venv
 uv sync
 source .venv/bin/activate
+
+# Setup wandb
 if [ -z "$WANDB_RUN" ]; then
     WANDB_RUN=dummy
 fi
+
+# Setup rustbpe
 python -m nanochat.report reset
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 uv run maturin develop --release --manifest-path rustbpe/Cargo.toml
+
+# Download eval_bundle
 EVAL_BUNDLE_URL=https://karpathy-public.s3.us-west-2.amazonaws.com/eval_bundle.zip
 if [ ! -d "$NANOCHAT_BASE_DIR/eval_bundle" ]; then
     curl -L -o eval_bundle.zip $EVAL_BUNDLE_URL
