@@ -37,15 +37,12 @@ import logging
 import os
 import random
 from contextlib import asynccontextmanager, nullcontext
-from dataclasses import dataclass
-from typing import AsyncGenerator, List, Optional
-
-import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
+from nanochat.common import compute_init, autodetect_device_type
 from nanochat.checkpoint_manager import load_model
 from nanochat.common import autodetect_device_type, compute_init
 from nanochat.engine import Engine
@@ -119,7 +116,6 @@ class WorkerPool:
                 autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
             else:
                 autocast_ctx = nullcontext() # default precision for MPS/CPU
-
             worker = Worker(
                 gpu_id=gpu_id,
                 device=device,
